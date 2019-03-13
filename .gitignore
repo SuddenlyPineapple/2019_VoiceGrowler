@@ -1,0 +1,17 @@
+cmake-build-debug/
+Drivers/*
+Inc/*
+startup/*
+.cproject
+.mxproject
+.project
+CMakeLists.txt
+CMakeLists_template.txt
+STM32F407VGTx_FLASH.ld
+syscalls.c
+VoiceGrowler.xml
+.idea/*
+*.tmp
+Src/stm32f4xx_hal_msp.c
+Src/stm32f4xx_it.c
+Src/system_stm32f4xx.c
