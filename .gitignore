@@ -15,3 +15,6 @@ VoiceGrowler.xml
 Src/stm32f4xx_hal_msp.c
 Src/stm32f4xx_it.c
 Src/system_stm32f4xx.c
+/Debug/
+.settings/language.settings.xml
+VoiceGrowler Run.cfg
