@@ -54,7 +54,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define SAMPLE 10000
+#define SAMPLE 1
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -77,12 +77,8 @@ TIM_HandleTypeDef htim3;
 int transmit = 1;
 double ADC1_value = 0;
 double DAC1_value = 0;
-extern const uint16_t rawAudio[123200];
-int k = 0;
-
 int16_t data1[SAMPLE];
 int16_t data2[SAMPLE];
-int table_select = 1;
 //End Defined for CS43L22 ----------------------------------------
 
 /* USER CODE END PV */
@@ -101,12 +97,6 @@ void HAL_I2S_TxCpltCallback(I2S_HandleTypeDef *hi2s)
 {
     transmit = 1;
 }
-
-//void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
-//    if(htim->Instance == TIM3){
-//        HAL_GPIO_TogglePin(GPIOD,GPIO_PIN_12);
-//    }
-//}
 
 /* USER CODE END PFP */
 
@@ -151,7 +141,7 @@ int main(void)
   MX_ADC1_Init();
   /* USER CODE BEGIN 2 */
   CS43_Init(hi2c1, MODE_I2S); //MODE_ANALOG
-  CS43_SetVolume(30); //0 - 100,, 40
+  CS43_SetVolume(50); //0 - 100,, 40
   CS43_Enable_RightLeft(CS43_RIGHT_LEFT);
   CS43_Start();
   HAL_TIM_Base_Start(&htim3);
@@ -162,44 +152,17 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-      table_select = 1;
+	  HAL_ADC_Start(&hadc1);
       if(transmit == 1)
       {
-          for(int g = 0; g < SAMPLE; g+=2){
-              if(table_select == 1){
-                  data1[g] = rawAudio[k]*80;
-                  data1[g+1] = rawAudio[k]*80;
-              } else {
-                  data2[g] = rawAudio[k];
-                  data2[g+1] = rawAudio[k];
-              }
-              if(k > 123199) k = 0;
-              else k++;
-          }
 
-          if(table_select == 1){
-              HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t *) data1, SAMPLE);
-              table_select = 0;
-          } else {
-              HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t *) data2, SAMPLE);
-              table_select = 1;
-          }
-          transmit = 0;
-      }
-
-      HAL_ADC_Start(&hadc1);
-      if(HAL_ADC_PollForConversion(&hadc1, 10) == HAL_OK && transmit == 1)
-      {
-          ADC1_value = HAL_ADC_GetValue(&hadc1);
-//          //ADC2_value = HAL_ADC_GetValue(&hadc1);
-//          data1[k] = ADC1_value;
-//          data1[k+1] = ADC1_value;
-//          if(k > 1000 && transmit == 1) {
-//            //HAL_I2S_Transmit(&hi2s3, (uint16_t *) data1, 1000, 10);
-//            k=0;
-//            //transmit = 0;
-//          }
-//          else k=k+2;
+    	  if(HAL_ADC_PollForConversion(&hadc1, 10) == HAL_OK){
+    		  for(int g = 0; g < SAMPLE; g+=1){
+    			  data1[g] = HAL_ADC_GetValue(&hadc1);
+    		  }
+    	  }
+    	  HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t *) data1, SAMPLE);
+    	  transmit = 0;
       }
 
     /* USER CODE END WHILE */
