@@ -79,9 +79,8 @@ int transmit = 1;
 double ADC1_value = 0;
 double DAC1_value = 0;
 int16_t data1[SAMPLE];
-int16_t data2[SAMPLE];
 //Variable to test ADC-DMA
-uint16_t Test[1];
+uint16_t Test[SAMPLE];
 //End Defined for CS43L22 ----------------------------------------
 
 /* USER CODE END PV */
@@ -100,7 +99,12 @@ void HAL_I2S_TxCpltCallback(I2S_HandleTypeDef *hi2s)
 {
     transmit = 1;
 }
-
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
+{
+    HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_15);
+    HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t *) Test, SAMPLE);
+    HAL_ADC_Start_DMA(&hadc1, Test, SAMPLE);
+}
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -144,20 +148,20 @@ int main(void)
   MX_ADC1_Init();
   /* USER CODE BEGIN 2 */
   CS43_Init(hi2c1, MODE_I2S); //MODE_ANALOG
-  CS43_SetVolume(50); //0 - 100,, 40
+  CS43_SetVolume(40); //0 - 100,, 40
   CS43_Enable_RightLeft(CS43_RIGHT_LEFT);
   CS43_Start();
   HAL_TIM_Base_Start(&htim3);
   HAL_TIM_Base_Start_IT(&htim3);
   //ADC to DMA
-  HAL_ADC_Start_DMA(&hadc1, Test, 1);
+  HAL_ADC_Start_DMA(&hadc1, Test, SAMPLE);
+  HAL_ADC_Start_IT(&hadc1);
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-    	  HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t *) Test, SAMPLE);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
