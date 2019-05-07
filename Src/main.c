@@ -75,12 +75,18 @@ TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
 
 /* USER CODE BEGIN PV */
-int transmit = 1;
+int transmit_adc = 1;
+int transmit_i2s = 1;
+int buffer = 1;
 double ADC1_value = 0;
 double DAC1_value = 0;
-int16_t data1[SAMPLE];
-//Variable to test ADC-DMA
-uint16_t Test[SAMPLE];
+uint32_t data1[SAMPLE];
+uint32_t data2[10000];
+uint32_t data3[5000];
+uint32_t data4[5000];
+uint32_t data5[5000];
+uint16_t data_adc[1];
+int adc_counter = 0;
 //End Defined for CS43L22 ----------------------------------------
 
 /* USER CODE END PV */
@@ -95,15 +101,36 @@ static void MX_TIM2_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_ADC1_Init(void);
 /* USER CODE BEGIN PFP */
+
 void HAL_I2S_TxCpltCallback(I2S_HandleTypeDef *hi2s)
 {
-    transmit = 1;
+    transmit_i2s = 1; //useless
 }
-void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
-{
-    HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_15);
-    HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t *) Test, SAMPLE);
-    HAL_ADC_Start_DMA(&hadc1, Test, SAMPLE);
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc) {
+
+    HAL_ADC_Stop_DMA(&hadc1);
+    data_adc[0] = data1[0];
+
+    if (adc_counter < 5000) {
+        data2[adc_counter] = data_adc[0];
+    } else if (adc_counter < 10000) {
+        data_adc[0] += data2[adc_counter - 5000] / 2;
+        data2[adc_counter] = data_adc[0];
+    } else if (adc_counter <= 14999) {
+        data_adc[0] += data2[adc_counter - 5000] / 2;
+        data2[adc_counter-10000] = data_adc[0];
+    }
+
+    if (adc_counter >= 14999){
+        adc_counter = 5000;
+    } else {
+        adc_counter++;
+    }
+
+    data_adc[0] *=3; // Regulacja głośności - powinnismy zrobic zakres -3 do +3/4, gdzie jak zglasniamy to jest np. *3, a jak zciszamy /3 i to wszystko na jakimś potencjometrze
+
+    HAL_I2S_Transmit_DMA(&hi2s3, data_adc, SAMPLE);
+    HAL_ADC_Start_DMA(&hadc1, data1, SAMPLE);
 }
 /* USER CODE END PFP */
 
@@ -148,14 +175,19 @@ int main(void)
   MX_ADC1_Init();
   /* USER CODE BEGIN 2 */
   CS43_Init(hi2c1, MODE_I2S); //MODE_ANALOG
-  CS43_SetVolume(40); //0 - 100,, 40
+  CS43_SetVolume(40); //0 - 100,, 40 - MAX bo inaczej zjada za duzo pradu
   CS43_Enable_RightLeft(CS43_RIGHT_LEFT);
   CS43_Start();
-  HAL_TIM_Base_Start(&htim3);
-  HAL_TIM_Base_Start_IT(&htim3);
-  //ADC to DMA
-  HAL_ADC_Start_DMA(&hadc1, Test, SAMPLE);
+
   HAL_ADC_Start_IT(&hadc1);
+
+//  HAL_I2S_DeInit(&hi2s3);
+//  hi2s3.Init.AudioFreq = I2S_AUDIOFREQ_48K;
+//  hi2s3.Init.DataFormat = I2S_DATAFORMAT_16B;
+//  HAL_StatusTypeDef result = HAL_I2S_Init(&hi2s3);
+
+  //ADC to DMA
+  HAL_ADC_Start_DMA(&hadc1, data1, SAMPLE);
   /* USER CODE END 2 */
 
   /* Infinite loop */
