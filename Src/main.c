@@ -78,8 +78,6 @@ TIM_HandleTypeDef htim3;
 int transmit_adc = 1;
 int transmit_i2s = 1;
 int buffer = 1;
-double ADC1_value = 0;
-double DAC1_value = 0;
 uint32_t data1[SAMPLE];
 uint32_t data2[10000];
 uint32_t data3[5000];
