@@ -79,12 +79,16 @@ int transmit_adc = 1;
 int transmit_i2s = 1;
 int buffer = 1;
 uint32_t data1[SAMPLE];
-uint32_t data2[10000];
+uint32_t data2[15000];
 uint32_t data3[5000];
 uint32_t data4[5000];
 uint32_t data5[5000];
 uint16_t data_adc[1];
 int adc_counter = 0;
+int Effect_Echo = 0;
+int Effect_Overdrive = 0;
+int Effect_Childvoice = 0;
+int Effect_CBA = 0;
 //End Defined for CS43L22 ----------------------------------------
 
 /* USER CODE END PV */
@@ -100,15 +104,7 @@ static void MX_TIM3_Init(void);
 static void MX_ADC1_Init(void);
 /* USER CODE BEGIN PFP */
 
-void HAL_I2S_TxCpltCallback(I2S_HandleTypeDef *hi2s)
-{
-    transmit_i2s = 1; //useless
-}
-void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc) {
-
-    HAL_ADC_Stop_DMA(&hadc1);
-    data_adc[0] = data1[0];
-
+void EchoRelay(uint16_t *data_adc){
     if (adc_counter < 5000) {
         data2[adc_counter] = data_adc[0];
     } else if (adc_counter < 10000) {
@@ -124,11 +120,62 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc) {
     } else {
         adc_counter++;
     }
+}
 
-    data_adc[0] *=3; // Regulacja głośności - powinnismy zrobic zakres -3 do +3/4, gdzie jak zglasniamy to jest np. *3, a jak zciszamy /3 i to wszystko na jakimś potencjometrze
+
+void HAL_I2S_TxCpltCallback(I2S_HandleTypeDef *hi2s)
+{
+    transmit_i2s = 1; //useless
+}
+
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc) {
+
+    HAL_ADC_Stop_DMA(&hadc1);
+    data_adc[0] = data1[0];
+
+    if(Effect_Echo == 1) EchoRelay(data_adc);
+
+    //data_adc[0] *=3; // Regulacja głośności - powinnismy zrobic zakres -3 do +3/4, gdzie jak zglasniamy to jest np. *3, a jak zciszamy /3 i to wszystko na jakimś potencjometrze
 
     HAL_I2S_Transmit_DMA(&hi2s3, data_adc, SAMPLE);
     HAL_ADC_Start_DMA(&hadc1, data1, SAMPLE);
+}
+
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+    if (htim->Instance == TIM2)
+    {
+        
+    }
+    if (htim->Instance == TIM3)
+    {
+        if(HAL_GPIO_ReadPin(GPIOE,GPIO_PIN_3) == GPIO_PIN_RESET) {
+            HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_12);
+            if(Effect_Echo == 0) Effect_Echo = 1;
+            else Effect_Echo = 0;
+        }
+        if(HAL_GPIO_ReadPin(GPIOE,GPIO_PIN_4) == GPIO_PIN_RESET) {
+            HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_13);
+            if(Effect_Overdrive == 0) Effect_Overdrive = 1;
+            else Effect_Overdrive = 0;
+        }
+        if(HAL_GPIO_ReadPin(GPIOE,GPIO_PIN_5) == GPIO_PIN_RESET) {
+            HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_14);
+            if(Effect_Childvoice == 0) Effect_Childvoice = 1;
+            else Effect_Childvoice = 0;
+        }
+        if(HAL_GPIO_ReadPin(GPIOE,GPIO_PIN_6) == GPIO_PIN_RESET) {
+            HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_15);
+            if(Effect_CBA == 0) Effect_CBA = 1;
+            else Effect_CBA = 0;
+        }
+        HAL_TIM_Base_Stop_IT(&htim3);
+    }
+}
+
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_PIN)
+{
+    HAL_TIM_Base_Start_IT(&htim3);
 }
 /* USER CODE END PFP */
 
@@ -173,7 +220,7 @@ int main(void)
   MX_ADC1_Init();
   /* USER CODE BEGIN 2 */
   CS43_Init(hi2c1, MODE_I2S); //MODE_ANALOG
-  CS43_SetVolume(40); //0 - 100,, 40 - MAX bo inaczej zjada za duzo pradu
+  CS43_SetVolume(70); //0 - 100,, 40 - MAX bo inaczej zjada za duzo pradu
   CS43_Enable_RightLeft(CS43_RIGHT_LEFT);
   CS43_Start();
 
@@ -431,9 +478,9 @@ static void MX_TIM3_Init(void)
 
   /* USER CODE END TIM3_Init 1 */
   htim3.Instance = TIM3;
-  htim3.Init.Prescaler = 139;
+  htim3.Init.Prescaler = 499;
   htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim3.Init.Period = 59999;
+  htim3.Init.Period = 8399;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
@@ -486,6 +533,7 @@ static void MX_GPIO_Init(void)
   GPIO_InitTypeDef GPIO_InitStruct = {0};
 
   /* GPIO Ports Clock Enable */
+  __HAL_RCC_GPIOE_CLK_ENABLE();
   __HAL_RCC_GPIOH_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
@@ -496,6 +544,12 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12|GPIO_PIN_13|GPIO_PIN_14|GPIO_PIN_15 
                           |GPIO_PIN_4, GPIO_PIN_RESET);
 
+  /*Configure GPIO pins : PE3 PE4 PE5 PE6 */
+  GPIO_InitStruct.Pin = GPIO_PIN_3|GPIO_PIN_4|GPIO_PIN_5|GPIO_PIN_6;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
+
   /*Configure GPIO pins : PD12 PD13 PD14 PD15 
                            PD4 */
   GPIO_InitStruct.Pin = GPIO_PIN_12|GPIO_PIN_13|GPIO_PIN_14|GPIO_PIN_15 
@@ -504,6 +558,16 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
+
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI3_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI3_IRQn);
+
+  HAL_NVIC_SetPriority(EXTI4_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI4_IRQn);
+
+  HAL_NVIC_SetPriority(EXTI9_5_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
 
 }
 
