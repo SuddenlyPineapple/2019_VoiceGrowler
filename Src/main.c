@@ -204,7 +204,27 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
             if(Effect_CBA == 0) Effect_CBA = 1;
             else Effect_CBA = 0;
         }
+        if(HAL_GPIO_ReadPin(GPIOE,GPIO_PIN_7) == GPIO_PIN_RESET) {
+            HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_12);
+            HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_13);
+        }
+        if(HAL_GPIO_ReadPin(GPIOE,GPIO_PIN_8) == GPIO_PIN_RESET) {
+            HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_13);
+            HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_14);
+        }
+        if(HAL_GPIO_ReadPin(GPIOE,GPIO_PIN_9) == GPIO_PIN_RESET) {
+            HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_14);
+            HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_15);
+        }
+        if(HAL_GPIO_ReadPin(GPIOE,GPIO_PIN_10) == GPIO_PIN_RESET) {
+            HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_15);
+            HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_12);
+        }
         HAL_TIM_Base_Stop_IT(&htim3);
+    }
+    if (htim->Instance == TIM6)
+    {
+
     }
 }
 
@@ -663,18 +683,12 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12|GPIO_PIN_13|GPIO_PIN_14|GPIO_PIN_15 
                           |GPIO_PIN_4, GPIO_PIN_RESET);
 
-  /*Configure GPIO pins : PE3 PE5 PE6 */
-  GPIO_InitStruct.Pin = GPIO_PIN_3|GPIO_PIN_5|GPIO_PIN_6;
+  /*Configure GPIO pins : PE3 PE4 PE5 PE6 
+                           PE7 PE8 PE9 PE10 */
+  GPIO_InitStruct.Pin = GPIO_PIN_3|GPIO_PIN_4|GPIO_PIN_5|GPIO_PIN_6 
+                          |GPIO_PIN_7|GPIO_PIN_8|GPIO_PIN_9|GPIO_PIN_10;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
-  HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
-
-  /*Configure GPIO pins : PE4 PE7 PE8 PE9 
-                           PE10 */
-  GPIO_InitStruct.Pin = GPIO_PIN_4|GPIO_PIN_7|GPIO_PIN_8|GPIO_PIN_9 
-                          |GPIO_PIN_10;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
 
   /*Configure GPIO pins : PD12 PD13 PD14 PD15 
@@ -695,6 +709,9 @@ static void MX_GPIO_Init(void)
 
   HAL_NVIC_SetPriority(EXTI9_5_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
+
+  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
 
 }
 
