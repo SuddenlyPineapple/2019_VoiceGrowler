@@ -45,6 +45,9 @@
 /* USER CODE BEGIN Includes */
 #include "MY_CS43L22.h"
 #include <math.h>
+
+#include "stm32f4xx.h"
+#define ARM_MATH_CM3
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -79,16 +82,18 @@ int transmit_adc = 1;
 int transmit_i2s = 1;
 int buffer = 1;
 uint32_t data1[SAMPLE];
-uint32_t data2[15000];
+uint32_t EchoData[15000];
 uint32_t data3[5000];
 uint32_t data4[5000];
 uint32_t data5[5000];
 uint16_t data_adc[1];
-int adc_counter = 0;
+int EchoCounter = 0;
 int Effect_Echo = 0;
 int Effect_Overdrive = 0;
 int Effect_Childvoice = 0;
 int Effect_CBA = 0;
+
+uint16_t dataSAMPLE = 0;
 //End Defined for CS43L22 ----------------------------------------
 
 /* USER CODE END PV */
@@ -104,24 +109,35 @@ static void MX_TIM3_Init(void);
 static void MX_ADC1_Init(void);
 /* USER CODE BEGIN PFP */
 
-void EchoRelay(uint16_t *data_adc){
-    if (adc_counter < 5000) {
-        data2[adc_counter] = data_adc[0];
-    } else if (adc_counter < 10000) {
-        data_adc[0] += data2[adc_counter - 5000] / 2;
-        data2[adc_counter] = data_adc[0];
-    } else if (adc_counter <= 14999) {
-        data_adc[0] += data2[adc_counter - 5000] / 2;
-        data2[adc_counter-10000] = data_adc[0];
+void EchoRelay(uint16_t *dataADC){
+    if (EchoCounter < 5000) {
+        EchoData[EchoCounter] = dataADC[0];
+    } else if (EchoCounter < 10000) {
+        dataADC[0] += EchoData[EchoCounter - 5000] / 2;
+        EchoData[EchoCounter] = dataADC[0];
+    } else if (EchoCounter <= 14999) {
+        dataADC[0] += EchoData[EchoCounter - 5000] / 2;
+        EchoData[EchoCounter-10000] = dataADC[0];
     }
 
-    if (adc_counter >= 14999){
-        adc_counter = 5000;
+    if (EchoCounter >= 14999){
+        EchoCounter = 5000;
     } else {
-        adc_counter++;
+        EchoCounter++;
     }
 }
 
+void Overdrive(uint16_t *dataADC){
+
+}
+
+void Childvoice(uint16_t *dataADC){
+
+}
+
+void CriminalVoice(uint16_t *dataADC){
+
+}
 
 void HAL_I2S_TxCpltCallback(I2S_HandleTypeDef *hi2s)
 {
@@ -134,7 +150,12 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc) {
     data_adc[0] = data1[0];
 
     if(Effect_Echo == 1) EchoRelay(data_adc);
+    if(Effect_Overdrive == 1) Overdrive(data_adc);
+    if(Effect_Childvoice == 1) Childvoice(data_adc);
+    if(Effect_CBA == 1) CriminalVoice(data_adc);
 
+
+    dataSAMPLE = data_adc[0];
     //data_adc[0] *=3; // Regulacja głośności - powinnismy zrobic zakres -3 do +3/4, gdzie jak zglasniamy to jest np. *3, a jak zciszamy /3 i to wszystko na jakimś potencjometrze
 
     HAL_I2S_Transmit_DMA(&hi2s3, data_adc, SAMPLE);
@@ -319,7 +340,7 @@ static void MX_ADC1_Init(void)
   hadc1.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV8;
   hadc1.Init.Resolution = ADC_RESOLUTION_12B;
   hadc1.Init.ScanConvMode = DISABLE;
-  hadc1.Init.ContinuousConvMode = ENABLE;
+  hadc1.Init.ContinuousConvMode = DISABLE;
   hadc1.Init.DiscontinuousConvMode = DISABLE;
   hadc1.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
   hadc1.Init.ExternalTrigConv = ADC_SOFTWARE_START;
@@ -335,7 +356,7 @@ static void MX_ADC1_Init(void)
   */
   sConfig.Channel = ADC_CHANNEL_1;
   sConfig.Rank = 1;
-  sConfig.SamplingTime = ADC_SAMPLETIME_480CYCLES;
+  sConfig.SamplingTime = ADC_SAMPLETIME_144CYCLES;
   if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
   {
     Error_Handler();
@@ -400,7 +421,7 @@ static void MX_I2S3_Init(void)
   hi2s3.Init.Standard = I2S_STANDARD_PHILIPS;
   hi2s3.Init.DataFormat = I2S_DATAFORMAT_16B;
   hi2s3.Init.MCLKOutput = I2S_MCLKOUTPUT_ENABLE;
-  hi2s3.Init.AudioFreq = I2S_AUDIOFREQ_16K;
+  hi2s3.Init.AudioFreq = I2S_AUDIOFREQ_48K;
   hi2s3.Init.CPOL = I2S_CPOL_LOW;
   hi2s3.Init.ClockSource = I2S_CLOCK_PLL;
   hi2s3.Init.FullDuplexMode = I2S_FULLDUPLEXMODE_DISABLE;
