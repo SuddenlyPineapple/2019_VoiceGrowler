@@ -101,7 +101,8 @@ int Effect_CBA = 0;
 uint16_t dataSAMPLE = 0;
 //End Defined for CS43L22 ----------------------------------------
 //SD CARD VARS
-uint16_t  SDbuffer[SDSIZE];      	//bufor odczytu i zapisu
+uint8_t  SDbuffer[SDSIZE];      	//bufor odczytu i zapisu
+uint16_t tempbuff[SDSIZE];
 static FATFS FatFs;    				//uchwyt do urz¹dzenia FatFs (dysku, karty SD...)
 FRESULT fresult;       				//do przechowywania wyniku operacji na bibliotece FatFs
 FIL file;                  			//uchwyt do otwartego pliku
@@ -207,16 +208,13 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
         	HAL_ADC_Stop_DMA(&hadc1);
         	HAL_I2S_DMAStop(&hi2s3);
         	fresult = f_open(&file, "isengard.wav", 1);
-//        	for(i=44; !f_eof(&file); i+=SDSIZE){
-//        		f_lseek(&file, i);
-//        		fresult = f_read(&file, SDbuffer, SDSIZE, &bytes_read);
-//        		HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t *)SDbuffer, SDSIZE);
-//        	}
         	HAL_TIM_Base_Start_IT(&htim6);
         }
         if(HAL_GPIO_ReadPin(GPIOE,GPIO_PIN_8) == GPIO_PIN_RESET) {
-            HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_13);
-            HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_14);
+        	HAL_ADC_Stop_DMA(&hadc1);
+        	HAL_I2S_DMAStop(&hi2s3);
+        	fresult = f_open(&file, "laser.wav", 1);
+        	HAL_TIM_Base_Start_IT(&htim6);
         }
         if(HAL_GPIO_ReadPin(GPIOE,GPIO_PIN_9) == GPIO_PIN_RESET) {
             HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_14);
@@ -232,11 +230,13 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 
     	f_lseek(&file, i);
     	fresult = f_read(&file, SDbuffer, SDSIZE, &bytes_read);
-    	HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t *)SDbuffer, 6);
+    	tempbuff[0]=SDbuffer[0]*12;
+    	HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t *)tempbuff, 1);
     	i++;
     	if(f_eof(&file)){
     		HAL_TIM_Base_Stop_IT(&htim6);
     		fresult = f_close(&file);
+    		HAL_ADC_Start_IT(&hadc1);
     		HAL_ADC_Start_DMA(&hadc1, data1, SAMPLE);
     		i=44;
     	}
