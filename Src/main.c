@@ -47,7 +47,8 @@
 #include <math.h>
 #include "ff.h"
 #include "stm32f4xx.h"
-#define ARM_MATH_CM3
+#define ARM_MATH_CM4
+#include "arm_math.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
