@@ -142,7 +142,8 @@ void EchoRelay(uint16_t *dataADC){
 }
 
 void Overdrive(uint16_t *dataADC){
-
+	if( dataADC[0]>1500) dataADC[0]=1500;
+	else if( dataADC[0]<200)  dataADC[0]=200;
 }
 
 void Childvoice(uint16_t *dataADC){
@@ -231,6 +232,8 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     	f_lseek(&file, i);
     	fresult = f_read(&file, SDbuffer, SDSIZE, &bytes_read);
     	tempbuff[0]=SDbuffer[0]*12;
+    	if(tempbuff[0]>1500) tempbuff[0]=1500;
+    	else if(tempbuff[0]<400) tempbuff[0]=400;
     	HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t *)tempbuff, 1);
     	i++;
     	if(f_eof(&file)){
