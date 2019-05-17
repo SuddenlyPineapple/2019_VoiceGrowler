@@ -45,10 +45,10 @@
 /* USER CODE BEGIN Includes */
 #include "MY_CS43L22.h"
 #include <math.h>
+#include <string.h>
 #include "ff.h"
 #include "stm32f4xx.h"
-#define ARM_MATH_CM4
-#include "arm_math.h"
+#include "fft.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -60,6 +60,7 @@
 /* USER CODE BEGIN PD */
 #define SAMPLE 1
 #define SDSIZE 1
+#define FFTBUFF 1000
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -88,15 +89,21 @@ int transmit_i2s = 1;
 int buffer = 1;
 uint32_t data1[SAMPLE];
 uint32_t EchoData[15000];
-uint32_t data3[5000];
+uint32_t ChildvoiceData[3000] = {0};
+double ChildvoiceDataFFTIn[3000] = {0};
+int ChildvoiceTmp = 0;
+uint32_t Speedy[1000] = {0};
 uint32_t data4[5000];
 uint32_t data5[5000];
 uint16_t data_adc[1];
 int EchoCounter = 0;
+int ChildVoiceCounter = 0;
 int Effect_Echo = 0;
 int Effect_Overdrive = 0;
 int Effect_Childvoice = 0;
 int Effect_CBA = 0;
+double FFT_Val = 0;
+double in[2000] = {0};
 
 uint16_t dataSAMPLE = 0;
 //End Defined for CS43L22 ----------------------------------------
@@ -134,6 +141,8 @@ void EchoRelay(uint16_t *dataADC){
         EchoData[EchoCounter-10000] = dataADC[0];
     }
 
+    dataADC[0] = dataADC[0]/2;
+
     if (EchoCounter >= 14999){
         EchoCounter = 5000;
     } else {
@@ -142,16 +151,37 @@ void EchoRelay(uint16_t *dataADC){
 }
 
 void Overdrive(uint16_t *dataADC){
-	if( dataADC[0]>1500) dataADC[0]=1500;
-	else if( dataADC[0]<200)  dataADC[0]=200;
+	if( dataADC[0]>2250) dataADC[0]=2250;
+	else if( dataADC[0]<500)  dataADC[0]=500;
 }
 
 void Childvoice(uint16_t *dataADC){
+    ChildvoiceDataFFTIn[ChildVoiceCounter] = dataADC[0];
 
+    Fft_transform(ChildvoiceDataFFTIn, 0, 3000);
+
+    FFT_Val = ChildvoiceDataFFTIn[ChildVoiceCounter];
+    for(int a = 2000; a < 2999 ; a++){
+            ChildvoiceDataFFTIn[a] *= 0;
+    }
+
+    Fft_inverseTransform(0,ChildvoiceDataFFTIn, 3000);
+
+    dataADC[0] = ChildvoiceDataFFTIn[ChildVoiceCounter];
+
+    ChildVoiceCounter++;
+    if(ChildVoiceCounter >= 3000) ChildVoiceCounter = 0;
 }
 
 void CriminalVoice(uint16_t *dataADC){
-
+//    if(ChildvoiceTmp == 0) ChildvoiceData[0] = dataADC[0];
+//
+//    ChildvoiceTmp++;
+//    if(ChildvoiceTmp >= 8) {
+//        ChildvoiceTmp = 0;
+//    }
+//
+//    dataADC[0] = ChildvoiceData[0];
 }
 
 void HAL_I2S_TxCpltCallback(I2S_HandleTypeDef *hi2s)
@@ -166,15 +196,20 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc) {
 
     if(Effect_Echo == 1) EchoRelay(data_adc);
     if(Effect_Overdrive == 1) Overdrive(data_adc);
-    if(Effect_Childvoice == 1) Childvoice(data_adc);
-    if(Effect_CBA == 1) CriminalVoice(data_adc);
+    //if(Effect_Childvoice == 1) Childvoice(data_adc);
+    //if(Effect_CBA == 1) CriminalVoice(data_adc);
 
 
     dataSAMPLE = data_adc[0];
     //data_adc[0] *=3; // Regulacja głośności - powinnismy zrobic zakres -3 do +3/4, gdzie jak zglasniamy to jest np. *3, a jak zciszamy /3 i to wszystko na jakimś potencjometrze
 
-    HAL_I2S_Transmit_DMA(&hi2s3, data_adc, SAMPLE);
-    HAL_ADC_Start_DMA(&hadc1, data1, SAMPLE);
+    if(Effect_Childvoice == 1 || Effect_CBA == 1){
+        HAL_I2S_Transmit_DMA(&hi2s3, Speedy, 1000);
+        HAL_ADC_Start_DMA(&hadc1, Speedy, 1000);
+    } else {
+        HAL_I2S_Transmit_DMA(&hi2s3, data_adc, SAMPLE);
+        HAL_ADC_Start_DMA(&hadc1, data1, SAMPLE);
+    }
 }
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
@@ -199,11 +234,29 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
             HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_14);
             if(Effect_Childvoice == 0) Effect_Childvoice = 1;
             else Effect_Childvoice = 0;
+
+            HAL_ADC_Stop_DMA(&hadc1);
+            HAL_I2S_DMAStop(&hi2s3);
+            HAL_ADC_Start_DMA(&hadc1, Speedy, 1000);
         }
         if(HAL_GPIO_ReadPin(GPIOE,GPIO_PIN_6) == GPIO_PIN_RESET) {
             HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_15);
-            if(Effect_CBA == 0) Effect_CBA = 1;
-            else Effect_CBA = 0;
+
+            if(Effect_CBA == 0) {
+                Effect_CBA = 1;
+                HAL_I2S_DeInit(&hi2s3);
+                hi2s3.Init.AudioFreq = I2S_AUDIOFREQ_22K;
+                HAL_I2S_Init(&hi2s3);
+            }
+            else {
+                Effect_CBA = 0;
+                HAL_I2S_DeInit(&hi2s3);
+                hi2s3.Init.AudioFreq = I2S_AUDIOFREQ_48K;
+                HAL_I2S_Init(&hi2s3);
+            }
+            HAL_ADC_Stop_DMA(&hadc1);
+            HAL_I2S_DMAStop(&hi2s3);
+            HAL_ADC_Start_DMA(&hadc1, Speedy, 1000);
         }
         if(HAL_GPIO_ReadPin(GPIOE,GPIO_PIN_7) == GPIO_PIN_RESET) {
         	HAL_ADC_Stop_DMA(&hadc1);
@@ -397,7 +450,7 @@ static void MX_ADC1_Init(void)
   hadc1.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV8;
   hadc1.Init.Resolution = ADC_RESOLUTION_12B;
   hadc1.Init.ScanConvMode = DISABLE;
-  hadc1.Init.ContinuousConvMode = DISABLE;
+  hadc1.Init.ContinuousConvMode = ENABLE;
   hadc1.Init.DiscontinuousConvMode = DISABLE;
   hadc1.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
   hadc1.Init.ExternalTrigConv = ADC_SOFTWARE_START;
