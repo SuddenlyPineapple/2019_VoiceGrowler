@@ -45,9 +45,10 @@
 /* USER CODE BEGIN Includes */
 #include "MY_CS43L22.h"
 #include <math.h>
-
-#define ARM_MATH_CM4
-#include "arm_math.h"
+#include <string.h>
+#include "ff.h"
+#include "stm32f4xx.h"
+#include "fft.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -58,6 +59,8 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define SAMPLE 1
+#define SDSIZE 1
+#define FFTBUFF 1000
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -74,8 +77,11 @@ I2C_HandleTypeDef hi2c1;
 I2S_HandleTypeDef hi2s3;
 DMA_HandleTypeDef hdma_spi3_tx;
 
+SPI_HandleTypeDef hspi1;
+
 TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
+TIM_HandleTypeDef htim6;
 
 /* USER CODE BEGIN PV */
 int transmit_adc = 1;
@@ -83,19 +89,32 @@ int transmit_i2s = 1;
 int buffer = 1;
 uint32_t data1[SAMPLE];
 uint32_t EchoData[15000];
-uint32_t data3[5000];
+uint32_t ChildvoiceData[3000] = {0};
+double ChildvoiceDataFFTIn[3000] = {0};
+int ChildvoiceTmp = 0;
+uint32_t Speedy[1000] = {0};
 uint32_t data4[5000];
 uint32_t data5[5000];
 uint16_t data_adc[1];
 int EchoCounter = 0;
+int ChildVoiceCounter = 0;
 int Effect_Echo = 0;
 int Effect_Overdrive = 0;
 int Effect_Childvoice = 0;
 int Effect_CBA = 0;
+double FFT_Val = 0;
+double in[2000] = {0};
 
 uint16_t dataSAMPLE = 0;
 //End Defined for CS43L22 ----------------------------------------
-
+//SD CARD VARS
+uint8_t  SDbuffer[SDSIZE];      	//bufor odczytu i zapisu
+uint16_t tempbuff[SDSIZE];
+static FATFS FatFs;    				//uchwyt do urz�dzenia FatFs (dysku, karty SD...)
+FRESULT fresult;       				//do przechowywania wyniku operacji na bibliotece FatFs
+FIL file;                  			//uchwyt do otwartego pliku
+WORD bytes_read;           			//liczba odczytanych byte
+volatile int i=44;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -107,6 +126,8 @@ static void MX_I2S3_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_ADC1_Init(void);
+static void MX_SPI1_Init(void);
+static void MX_TIM6_Init(void);
 /* USER CODE BEGIN PFP */
 
 void EchoRelay(uint16_t *dataADC){
@@ -120,6 +141,8 @@ void EchoRelay(uint16_t *dataADC){
         EchoData[EchoCounter-10000] = dataADC[0];
     }
 
+    dataADC[0] = dataADC[0]/2;
+
     if (EchoCounter >= 14999){
         EchoCounter = 5000;
     } else {
@@ -128,15 +151,37 @@ void EchoRelay(uint16_t *dataADC){
 }
 
 void Overdrive(uint16_t *dataADC){
-
+	if( dataADC[0]>2250) dataADC[0]=2250;
+	else if( dataADC[0]<500)  dataADC[0]=500;
 }
 
 void Childvoice(uint16_t *dataADC){
+    ChildvoiceDataFFTIn[ChildVoiceCounter] = dataADC[0];
 
+    Fft_transform(ChildvoiceDataFFTIn, 0, 3000);
+
+    FFT_Val = ChildvoiceDataFFTIn[ChildVoiceCounter];
+    for(int a = 2000; a < 2999 ; a++){
+            ChildvoiceDataFFTIn[a] *= 0;
+    }
+
+    Fft_inverseTransform(0,ChildvoiceDataFFTIn, 3000);
+
+    dataADC[0] = ChildvoiceDataFFTIn[ChildVoiceCounter];
+
+    ChildVoiceCounter++;
+    if(ChildVoiceCounter >= 3000) ChildVoiceCounter = 0;
 }
 
 void CriminalVoice(uint16_t *dataADC){
-
+//    if(ChildvoiceTmp == 0) ChildvoiceData[0] = dataADC[0];
+//
+//    ChildvoiceTmp++;
+//    if(ChildvoiceTmp >= 8) {
+//        ChildvoiceTmp = 0;
+//    }
+//
+//    dataADC[0] = ChildvoiceData[0];
 }
 
 void HAL_I2S_TxCpltCallback(I2S_HandleTypeDef *hi2s)
@@ -151,15 +196,20 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc) {
 
     if(Effect_Echo == 1) EchoRelay(data_adc);
     if(Effect_Overdrive == 1) Overdrive(data_adc);
-    if(Effect_Childvoice == 1) Childvoice(data_adc);
-    if(Effect_CBA == 1) CriminalVoice(data_adc);
+    //if(Effect_Childvoice == 1) Childvoice(data_adc);
+    //if(Effect_CBA == 1) CriminalVoice(data_adc);
 
 
     dataSAMPLE = data_adc[0];
     //data_adc[0] *=3; // Regulacja głośności - powinnismy zrobic zakres -3 do +3/4, gdzie jak zglasniamy to jest np. *3, a jak zciszamy /3 i to wszystko na jakimś potencjometrze
 
-    HAL_I2S_Transmit_DMA(&hi2s3, data_adc, SAMPLE);
-    HAL_ADC_Start_DMA(&hadc1, data1, SAMPLE);
+    if(Effect_Childvoice == 1 || Effect_CBA == 1){
+        HAL_I2S_Transmit_DMA(&hi2s3, Speedy, 1000);
+        HAL_ADC_Start_DMA(&hadc1, Speedy, 1000);
+    } else {
+        HAL_I2S_Transmit_DMA(&hi2s3, data_adc, SAMPLE);
+        HAL_ADC_Start_DMA(&hadc1, data1, SAMPLE);
+    }
 }
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
@@ -184,13 +234,68 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
             HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_14);
             if(Effect_Childvoice == 0) Effect_Childvoice = 1;
             else Effect_Childvoice = 0;
+
+            HAL_ADC_Stop_DMA(&hadc1);
+            HAL_I2S_DMAStop(&hi2s3);
+            HAL_ADC_Start_DMA(&hadc1, Speedy, 1000);
         }
         if(HAL_GPIO_ReadPin(GPIOE,GPIO_PIN_6) == GPIO_PIN_RESET) {
             HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_15);
-            if(Effect_CBA == 0) Effect_CBA = 1;
-            else Effect_CBA = 0;
+
+            if(Effect_CBA == 0) {
+                Effect_CBA = 1;
+                HAL_I2S_DeInit(&hi2s3);
+                hi2s3.Init.AudioFreq = I2S_AUDIOFREQ_22K;
+                HAL_I2S_Init(&hi2s3);
+            }
+            else {
+                Effect_CBA = 0;
+                HAL_I2S_DeInit(&hi2s3);
+                hi2s3.Init.AudioFreq = I2S_AUDIOFREQ_48K;
+                HAL_I2S_Init(&hi2s3);
+            }
+            HAL_ADC_Stop_DMA(&hadc1);
+            HAL_I2S_DMAStop(&hi2s3);
+            HAL_ADC_Start_DMA(&hadc1, Speedy, 1000);
+        }
+        if(HAL_GPIO_ReadPin(GPIOE,GPIO_PIN_7) == GPIO_PIN_RESET) {
+        	HAL_ADC_Stop_DMA(&hadc1);
+        	HAL_I2S_DMAStop(&hi2s3);
+        	fresult = f_open(&file, "isengard.wav", 1);
+        	HAL_TIM_Base_Start_IT(&htim6);
+        }
+        if(HAL_GPIO_ReadPin(GPIOE,GPIO_PIN_8) == GPIO_PIN_RESET) {
+        	HAL_ADC_Stop_DMA(&hadc1);
+        	HAL_I2S_DMAStop(&hi2s3);
+        	fresult = f_open(&file, "laser.wav", 1);
+        	HAL_TIM_Base_Start_IT(&htim6);
+        }
+        if(HAL_GPIO_ReadPin(GPIOE,GPIO_PIN_9) == GPIO_PIN_RESET) {
+            HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_14);
+            HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_15);
+        }
+        if(HAL_GPIO_ReadPin(GPIOE,GPIO_PIN_10) == GPIO_PIN_RESET) {
+            HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_15);
+            HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_12);
         }
         HAL_TIM_Base_Stop_IT(&htim3);
+    }
+    if (htim->Instance == TIM6){
+
+    	f_lseek(&file, i);
+    	fresult = f_read(&file, SDbuffer, SDSIZE, &bytes_read);
+    	tempbuff[0]=SDbuffer[0]*12;
+    	if(tempbuff[0]>1500) tempbuff[0]=1500;
+    	else if(tempbuff[0]<400) tempbuff[0]=400;
+    	HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t *)tempbuff, 1);
+    	i++;
+    	if(f_eof(&file)){
+    		HAL_TIM_Base_Stop_IT(&htim6);
+    		fresult = f_close(&file);
+    		HAL_ADC_Start_IT(&hadc1);
+    		HAL_ADC_Start_DMA(&hadc1, data1, SAMPLE);
+    		i=44;
+    	}
     }
 }
 
@@ -239,6 +344,8 @@ int main(void)
   MX_TIM2_Init();
   MX_TIM3_Init();
   MX_ADC1_Init();
+  MX_SPI1_Init();
+  MX_TIM6_Init();
   /* USER CODE BEGIN 2 */
   CS43_Init(hi2c1, MODE_I2S); //MODE_ANALOG
   CS43_SetVolume(70); //0 - 100,, 40 - MAX bo inaczej zjada za duzo pradu
@@ -254,6 +361,9 @@ int main(void)
 
   //ADC to DMA
   HAL_ADC_Start_DMA(&hadc1, data1, SAMPLE);
+  //SD Init
+  fresult = f_mount(&FatFs, "",1);
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -340,7 +450,7 @@ static void MX_ADC1_Init(void)
   hadc1.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV8;
   hadc1.Init.Resolution = ADC_RESOLUTION_12B;
   hadc1.Init.ScanConvMode = DISABLE;
-  hadc1.Init.ContinuousConvMode = DISABLE;
+  hadc1.Init.ContinuousConvMode = ENABLE;
   hadc1.Init.DiscontinuousConvMode = DISABLE;
   hadc1.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
   hadc1.Init.ExternalTrigConv = ADC_SOFTWARE_START;
@@ -436,6 +546,44 @@ static void MX_I2S3_Init(void)
 }
 
 /**
+  * @brief SPI1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_SPI1_Init(void)
+{
+
+  /* USER CODE BEGIN SPI1_Init 0 */
+
+  /* USER CODE END SPI1_Init 0 */
+
+  /* USER CODE BEGIN SPI1_Init 1 */
+
+  /* USER CODE END SPI1_Init 1 */
+  /* SPI1 parameter configuration*/
+  hspi1.Instance = SPI1;
+  hspi1.Init.Mode = SPI_MODE_MASTER;
+  hspi1.Init.Direction = SPI_DIRECTION_2LINES;
+  hspi1.Init.DataSize = SPI_DATASIZE_8BIT;
+  hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
+  hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
+  hspi1.Init.NSS = SPI_NSS_SOFT;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_16;
+  hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
+  hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
+  hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
+  hspi1.Init.CRCPolynomial = 10;
+  if (HAL_SPI_Init(&hspi1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN SPI1_Init 2 */
+
+  /* USER CODE END SPI1_Init 2 */
+
+}
+
+/**
   * @brief TIM2 Initialization Function
   * @param None
   * @retval None
@@ -525,6 +673,44 @@ static void MX_TIM3_Init(void)
 
 }
 
+/**
+  * @brief TIM6 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM6_Init(void)
+{
+
+  /* USER CODE BEGIN TIM6_Init 0 */
+
+  /* USER CODE END TIM6_Init 0 */
+
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM6_Init 1 */
+
+  /* USER CODE END TIM6_Init 1 */
+  htim6.Instance = TIM6;
+  htim6.Init.Prescaler = 0;
+  htim6.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim6.Init.Period = 1749;
+  htim6.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim6) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim6, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM6_Init 2 */
+
+  /* USER CODE END TIM6_Init 2 */
+
+}
+
 /** 
   * Enable DMA controller clock
   */
@@ -565,8 +751,10 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12|GPIO_PIN_13|GPIO_PIN_14|GPIO_PIN_15 
                           |GPIO_PIN_4, GPIO_PIN_RESET);
 
-  /*Configure GPIO pins : PE3 PE4 PE5 PE6 */
-  GPIO_InitStruct.Pin = GPIO_PIN_3|GPIO_PIN_4|GPIO_PIN_5|GPIO_PIN_6;
+  /*Configure GPIO pins : PE3 PE4 PE5 PE6 
+                           PE7 PE8 PE9 PE10 */
+  GPIO_InitStruct.Pin = GPIO_PIN_3|GPIO_PIN_4|GPIO_PIN_5|GPIO_PIN_6 
+                          |GPIO_PIN_7|GPIO_PIN_8|GPIO_PIN_9|GPIO_PIN_10;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
@@ -589,6 +777,9 @@ static void MX_GPIO_Init(void)
 
   HAL_NVIC_SetPriority(EXTI9_5_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
+
+  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
 
 }
 
