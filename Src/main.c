@@ -101,13 +101,13 @@ int Effect_CBA = 0;
 uint16_t dataSAMPLE = 0;
 //End Defined for CS43L22 ----------------------------------------
 //SD CARD VARS
-uint8_t  SDbuffer[SDSIZE];      	//bufor odczytu i zapisu
+uint8_t SDbuffer[SDSIZE];      	//bufor odczytu i zapisu
 uint16_t tempbuff[SDSIZE];
 static FATFS FatFs;    				//uchwyt do urz¹dzenia FatFs (dysku, karty SD...)
 FRESULT fresult;       				//do przechowywania wyniku operacji na bibliotece FatFs
 FIL file;                  			//uchwyt do otwartego pliku
 WORD bytes_read;           			//liczba odczytanych byte
-volatile int i=44;
+volatile int startstop=0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -206,16 +206,37 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
             else Effect_CBA = 0;
         }
         if(HAL_GPIO_ReadPin(GPIOE,GPIO_PIN_7) == GPIO_PIN_RESET) {
-        	HAL_ADC_Stop_DMA(&hadc1);
-        	HAL_I2S_DMAStop(&hi2s3);
-        	fresult = f_open(&file, "isengard.wav", 1);
-        	HAL_TIM_Base_Start_IT(&htim6);
+        	if(startstop==0){
+        		HAL_ADC_Stop_DMA(&hadc1);
+        		HAL_I2S_DMAStop(&hi2s3);
+        		fresult = f_open(&file, "isengard.wav", 1);
+        		f_lseek(&file, 44);
+        		HAL_TIM_Base_Start_IT(&htim6);
+        	}
+        	else {
+        		HAL_TIM_Base_Stop_IT(&htim6);
+        		fresult = f_close(&file);
+        		HAL_ADC_Start_IT(&hadc1);
+        		HAL_ADC_Start_DMA(&hadc1, data1, SAMPLE);
+        		startstop=0;
+        	}
+
         }
         if(HAL_GPIO_ReadPin(GPIOE,GPIO_PIN_8) == GPIO_PIN_RESET) {
-        	HAL_ADC_Stop_DMA(&hadc1);
-        	HAL_I2S_DMAStop(&hi2s3);
-        	fresult = f_open(&file, "laser.wav", 1);
-        	HAL_TIM_Base_Start_IT(&htim6);
+        	if(startstop==0){
+        		HAL_ADC_Stop_DMA(&hadc1);
+        		HAL_I2S_DMAStop(&hi2s3);
+        		fresult = f_open(&file, "laser.wav", 1);
+        		f_lseek(&file, 44);
+        		HAL_TIM_Base_Start_IT(&htim6);
+        	}
+        	else {
+        		HAL_TIM_Base_Stop_IT(&htim6);
+        		fresult = f_close(&file);
+        		HAL_ADC_Start_IT(&hadc1);
+        		HAL_ADC_Start_DMA(&hadc1, data1, SAMPLE);
+        		startstop=0;
+        	}
         }
         if(HAL_GPIO_ReadPin(GPIOE,GPIO_PIN_9) == GPIO_PIN_RESET) {
             HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_14);
@@ -228,20 +249,16 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
         HAL_TIM_Base_Stop_IT(&htim3);
     }
     if (htim->Instance == TIM6){
-
-    	f_lseek(&file, i);
+    	startstop=1;
     	fresult = f_read(&file, SDbuffer, SDSIZE, &bytes_read);
-    	tempbuff[0]=SDbuffer[0]*12;
-    	if(tempbuff[0]>1500) tempbuff[0]=1500;
-    	else if(tempbuff[0]<400) tempbuff[0]=400;
-    	HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t *)tempbuff, 1);
-    	i++;
+    	tempbuff[0]=SDbuffer[0]*16;
+    	HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t *)tempbuff, SDSIZE);
     	if(f_eof(&file)){
     		HAL_TIM_Base_Stop_IT(&htim6);
     		fresult = f_close(&file);
     		HAL_ADC_Start_IT(&hadc1);
     		HAL_ADC_Start_DMA(&hadc1, data1, SAMPLE);
-    		i=44;
+    		startstop=0;
     	}
     }
 }
@@ -640,7 +657,7 @@ static void MX_TIM6_Init(void)
   htim6.Instance = TIM6;
   htim6.Init.Prescaler = 0;
   htim6.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim6.Init.Period = 1749;
+  htim6.Init.Period = 1908;
   htim6.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim6) != HAL_OK)
   {
