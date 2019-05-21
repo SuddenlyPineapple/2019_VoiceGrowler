@@ -93,8 +93,6 @@ uint32_t ChildvoiceData[3000] = {0};
 double ChildvoiceDataFFTIn[3000] = {0};
 int ChildvoiceTmp = 0;
 uint32_t Speedy[1000] = {0};
-uint32_t data4[5000];
-uint32_t data5[5000];
 uint16_t data_adc[1];
 int EchoCounter = 0;
 int ChildVoiceCounter = 0;
@@ -262,12 +260,18 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
         	if(startstop==0){
         		HAL_ADC_Stop_DMA(&hadc1);
         		HAL_I2S_DMAStop(&hi2s3);
+        		HAL_I2S_DeInit(&hi2s3);
+        		hi2s3.Init.AudioFreq = I2S_AUDIOFREQ_44K;
+        		HAL_StatusTypeDef result = HAL_I2S_Init(&hi2s3);
         		fresult = f_open(&file, "isengard.wav", 1);
         		f_lseek(&file, 44);
         		HAL_TIM_Base_Start_IT(&htim6);
         	}
         	else {
         		HAL_TIM_Base_Stop_IT(&htim6);
+        		HAL_I2S_DeInit(&hi2s3);
+        		hi2s3.Init.AudioFreq = I2S_AUDIOFREQ_48K;
+        		HAL_StatusTypeDef result = HAL_I2S_Init(&hi2s3);
         		fresult = f_close(&file);
         		HAL_ADC_Start_IT(&hadc1);
         		HAL_ADC_Start_DMA(&hadc1, data1, SAMPLE);
@@ -279,12 +283,18 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
         	if(startstop==0){
         		HAL_ADC_Stop_DMA(&hadc1);
         		HAL_I2S_DMAStop(&hi2s3);
+        		HAL_I2S_DeInit(&hi2s3);
+        		hi2s3.Init.AudioFreq = I2S_AUDIOFREQ_44K;
+        		HAL_StatusTypeDef result = HAL_I2S_Init(&hi2s3);
         		fresult = f_open(&file, "laser.wav", 1);
         		f_lseek(&file, 44);
         		HAL_TIM_Base_Start_IT(&htim6);
         	}
         	else {
         		HAL_TIM_Base_Stop_IT(&htim6);
+        		HAL_I2S_DeInit(&hi2s3);
+        		hi2s3.Init.AudioFreq = I2S_AUDIOFREQ_48K;
+        		HAL_StatusTypeDef result = HAL_I2S_Init(&hi2s3);
         		fresult = f_close(&file);
         		HAL_ADC_Start_IT(&hadc1);
         		HAL_ADC_Start_DMA(&hadc1, data1, SAMPLE);
@@ -308,6 +318,9 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     	HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t *)tempbuff, SDSIZE);
     	if(f_eof(&file)){
     		HAL_TIM_Base_Stop_IT(&htim6);
+//    		HAL_I2S_DeInit(&hi2s3);
+//    		hi2s3.Init.AudioFreq = I2S_AUDIOFREQ_48K;
+//    		HAL_StatusTypeDef result = HAL_I2S_Init(&hi2s3);
     		fresult = f_close(&file);
     		HAL_ADC_Start_IT(&hadc1);
     		HAL_ADC_Start_DMA(&hadc1, data1, SAMPLE);
@@ -369,12 +382,11 @@ int main(void)
   CS43_Enable_RightLeft(CS43_RIGHT_LEFT);
   CS43_Start();
 
-  HAL_ADC_Start_IT(&hadc1);
-
 //  HAL_I2S_DeInit(&hi2s3);
 //  hi2s3.Init.AudioFreq = I2S_AUDIOFREQ_48K;
-//  hi2s3.Init.DataFormat = I2S_DATAFORMAT_16B;
 //  HAL_StatusTypeDef result = HAL_I2S_Init(&hi2s3);
+
+  HAL_ADC_Start_IT(&hadc1);
 
   //ADC to DMA
   HAL_ADC_Start_DMA(&hadc1, data1, SAMPLE);
@@ -710,7 +722,7 @@ static void MX_TIM6_Init(void)
   htim6.Instance = TIM6;
   htim6.Init.Prescaler = 0;
   htim6.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim6.Init.Period = 1908;
+  htim6.Init.Period = 1749;
   htim6.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim6) != HAL_OK)
   {
