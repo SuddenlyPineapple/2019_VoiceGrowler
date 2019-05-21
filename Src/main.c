@@ -70,6 +70,7 @@
 
 /* Private variables ---------------------------------------------------------*/
 ADC_HandleTypeDef hadc1;
+ADC_HandleTypeDef hadc2;
 DMA_HandleTypeDef hdma_adc1;
 
 I2C_HandleTypeDef hi2c1;
@@ -92,7 +93,7 @@ uint32_t EchoData[15000];
 uint32_t ChildvoiceData[3000] = {0};
 double ChildvoiceDataFFTIn[3000] = {0};
 int ChildvoiceTmp = 0;
-uint32_t Speedy[1000] = {0};
+uint16_t Speedy[1000] = {0};
 uint16_t data_adc[1];
 int EchoCounter = 0;
 int ChildVoiceCounter = 0;
@@ -102,7 +103,8 @@ int Effect_Childvoice = 0;
 int Effect_CBA = 0;
 double FFT_Val = 0;
 double in[2000] = {0};
-
+uint16_t volume;
+uint16_t old_volume;
 uint16_t dataSAMPLE = 0;
 //End Defined for CS43L22 ----------------------------------------
 //SD CARD VARS
@@ -126,6 +128,7 @@ static void MX_TIM3_Init(void);
 static void MX_ADC1_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_TIM6_Init(void);
+static void MX_ADC2_Init(void);
 /* USER CODE BEGIN PFP */
 
 void EchoRelay(uint16_t *dataADC){
@@ -214,7 +217,14 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
     if (htim->Instance == TIM2)
     {
-        
+        if (HAL_ADC_PollForConversion(&hadc2, 10) == HAL_OK) {
+            old_volume = volume;
+            volume = HAL_ADC_GetValue(&hadc2);
+
+            if(volume>old_volume+50 || volume<old_volume+50)
+                CS43_SetVolume((int)(80* (volume/4095)));
+        }
+        HAL_ADC_Start(&hadc2);
     }
     if (htim->Instance == TIM3)
     {
@@ -376,12 +386,19 @@ int main(void)
   MX_ADC1_Init();
   MX_SPI1_Init();
   MX_TIM6_Init();
+  MX_ADC2_Init();
   /* USER CODE BEGIN 2 */
   CS43_Init(hi2c1, MODE_I2S); //MODE_ANALOG
-  CS43_SetVolume(70); //0 - 100,, 40 - MAX bo inaczej zjada za duzo pradu
+  CS43_SetVolume(80); //0 - 100,, 40 - MAX bo inaczej zjada za duzo pradu
   CS43_Enable_RightLeft(CS43_RIGHT_LEFT);
   CS43_Start();
 
+  HAL_ADC_Start_IT(&hadc1);
+  HAL_ADC_Start(&hadc2);
+  HAL_TIM_Base_Start_IT(&htim2);
+
+  htim2.Instance->ARR = 139 ;
+  htim2.Instance->PSC = 59999;
 //  HAL_I2S_DeInit(&hi2s3);
 //  hi2s3.Init.AudioFreq = I2S_AUDIOFREQ_48K;
 //  HAL_StatusTypeDef result = HAL_I2S_Init(&hi2s3);
@@ -503,6 +520,56 @@ static void MX_ADC1_Init(void)
   /* USER CODE BEGIN ADC1_Init 2 */
 
   /* USER CODE END ADC1_Init 2 */
+
+}
+
+/**
+  * @brief ADC2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_ADC2_Init(void)
+{
+
+  /* USER CODE BEGIN ADC2_Init 0 */
+
+  /* USER CODE END ADC2_Init 0 */
+
+  ADC_ChannelConfTypeDef sConfig = {0};
+
+  /* USER CODE BEGIN ADC2_Init 1 */
+
+  /* USER CODE END ADC2_Init 1 */
+  /** Configure the global features of the ADC (Clock, Resolution, Data Alignment and number of conversion) 
+  */
+  hadc2.Instance = ADC2;
+  hadc2.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV8;
+  hadc2.Init.Resolution = ADC_RESOLUTION_12B;
+  hadc2.Init.ScanConvMode = DISABLE;
+  hadc2.Init.ContinuousConvMode = ENABLE;
+  hadc2.Init.DiscontinuousConvMode = DISABLE;
+  hadc2.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
+  hadc2.Init.ExternalTrigConv = ADC_SOFTWARE_START;
+  hadc2.Init.DataAlign = ADC_DATAALIGN_RIGHT;
+  hadc2.Init.NbrOfConversion = 1;
+  hadc2.Init.DMAContinuousRequests = DISABLE;
+  hadc2.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
+  if (HAL_ADC_Init(&hadc2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /** Configure for the selected ADC regular channel its corresponding rank in the sequencer and its sample time. 
+  */
+  sConfig.Channel = ADC_CHANNEL_9;
+  sConfig.Rank = 1;
+  sConfig.SamplingTime = ADC_SAMPLETIME_112CYCLES;
+  if (HAL_ADC_ConfigChannel(&hadc2, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN ADC2_Init 2 */
+
+  /* USER CODE END ADC2_Init 2 */
 
 }
 
@@ -631,9 +698,9 @@ static void MX_TIM2_Init(void)
 
   /* USER CODE END TIM2_Init 1 */
   htim2.Instance = TIM2;
-  htim2.Init.Prescaler = 0;
+  htim2.Init.Prescaler = 139;
   htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim2.Init.Period = 5249;
+  htim2.Init.Period = 59999;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
@@ -772,9 +839,9 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOE_CLK_ENABLE();
   __HAL_RCC_GPIOH_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
   __HAL_RCC_GPIOC_CLK_ENABLE();
-  __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12|GPIO_PIN_13|GPIO_PIN_14|GPIO_PIN_15 
