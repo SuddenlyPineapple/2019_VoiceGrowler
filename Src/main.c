@@ -221,7 +221,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
             old_volume = volume;
             volume = HAL_ADC_GetValue(&hadc2);
 
-            if(volume>old_volume+50 || volume<old_volume+50)
+            if(volume>old_volume+25 || volume<old_volume+25)
                 CS43_SetVolume((int)(80* (volume/4095)));
         }
         HAL_ADC_Start(&hadc2);
@@ -324,13 +324,13 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     if (htim->Instance == TIM6){
     	startstop=1;
     	fresult = f_read(&file, SDbuffer, SDSIZE, &bytes_read);
-    	tempbuff[0]=SDbuffer[0]*16;
+    	tempbuff[0]=SDbuffer[0]*18;
     	HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t *)tempbuff, SDSIZE);
     	if(f_eof(&file)){
     		HAL_TIM_Base_Stop_IT(&htim6);
-//    		HAL_I2S_DeInit(&hi2s3);
-//    		hi2s3.Init.AudioFreq = I2S_AUDIOFREQ_48K;
-//    		HAL_StatusTypeDef result = HAL_I2S_Init(&hi2s3);
+    		HAL_I2S_DeInit(&hi2s3);
+    		hi2s3.Init.AudioFreq = I2S_AUDIOFREQ_48K;
+    		HAL_StatusTypeDef result = HAL_I2S_Init(&hi2s3);
     		fresult = f_close(&file);
     		HAL_ADC_Start_IT(&hadc1);
     		HAL_ADC_Start_DMA(&hadc1, data1, SAMPLE);
@@ -395,7 +395,7 @@ int main(void)
 
   HAL_ADC_Start_IT(&hadc1);
   HAL_ADC_Start(&hadc2);
-  HAL_TIM_Base_Start_IT(&htim2);
+  //HAL_TIM_Base_Start_IT(&htim2);
 
   htim2.Instance->ARR = 139 ;
   htim2.Instance->PSC = 59999;
