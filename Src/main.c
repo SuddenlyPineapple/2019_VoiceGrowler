@@ -312,12 +312,48 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
         	}
         }
         if(HAL_GPIO_ReadPin(GPIOE,GPIO_PIN_9) == GPIO_PIN_RESET) {
-            HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_14);
-            HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_15);
+        	if(startstop==0){
+        		HAL_ADC_Stop_DMA(&hadc1);
+        		HAL_I2S_DMAStop(&hi2s3);
+        		HAL_I2S_DeInit(&hi2s3);
+        		hi2s3.Init.AudioFreq = I2S_AUDIOFREQ_44K;
+        		HAL_StatusTypeDef result = HAL_I2S_Init(&hi2s3);
+        		fresult = f_open(&file, "snoop.wav", 1);
+        		f_lseek(&file, 44);
+        		HAL_TIM_Base_Start_IT(&htim6);
+        	}
+        	else {
+        		HAL_TIM_Base_Stop_IT(&htim6);
+        		HAL_I2S_DeInit(&hi2s3);
+        		hi2s3.Init.AudioFreq = I2S_AUDIOFREQ_48K;
+        		HAL_StatusTypeDef result = HAL_I2S_Init(&hi2s3);
+        		fresult = f_close(&file);
+        		HAL_ADC_Start_IT(&hadc1);
+        		HAL_ADC_Start_DMA(&hadc1, data1, SAMPLE);
+        		startstop=0;
+        	}
         }
         if(HAL_GPIO_ReadPin(GPIOE,GPIO_PIN_10) == GPIO_PIN_RESET) {
-            HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_15);
-            HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_12);
+        	if(startstop==0){
+        		HAL_ADC_Stop_DMA(&hadc1);
+        		HAL_I2S_DMAStop(&hi2s3);
+        		HAL_I2S_DeInit(&hi2s3);
+        		hi2s3.Init.AudioFreq = I2S_AUDIOFREQ_44K;
+        		HAL_StatusTypeDef result = HAL_I2S_Init(&hi2s3);
+        		fresult = f_open(&file, "star.wav", 1);
+        		f_lseek(&file, 44);
+        		HAL_TIM_Base_Start_IT(&htim6);
+        	}
+        	else {
+        		HAL_TIM_Base_Stop_IT(&htim6);
+        		HAL_I2S_DeInit(&hi2s3);
+        		hi2s3.Init.AudioFreq = I2S_AUDIOFREQ_48K;
+        		HAL_StatusTypeDef result = HAL_I2S_Init(&hi2s3);
+        		fresult = f_close(&file);
+        		HAL_ADC_Start_IT(&hadc1);
+        		HAL_ADC_Start_DMA(&hadc1, data1, SAMPLE);
+        		startstop=0;
+        	}
         }
         HAL_TIM_Base_Stop_IT(&htim3);
     }
