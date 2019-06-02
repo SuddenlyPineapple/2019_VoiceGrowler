@@ -103,8 +103,8 @@ int Effect_Childvoice = 0;
 int Effect_CBA = 0;
 double FFT_Val = 0;
 double in[2000] = {0};
-uint16_t volume;
-uint16_t old_volume;
+double volume;
+double old_volume;
 uint16_t dataSAMPLE = 0;
 //End Defined for CS43L22 ----------------------------------------
 //SD CARD VARS
@@ -130,6 +130,20 @@ static void MX_SPI1_Init(void);
 static void MX_TIM6_Init(void);
 static void MX_ADC2_Init(void);
 /* USER CODE BEGIN PFP */
+void resetAudio(){
+    HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, 0);
+    HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, 0);
+    HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, 0);
+    HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, 0);
+
+    Effect_Echo = 0;
+    Effect_Overdrive = 0;
+    Effect_Childvoice = 0;
+    Effect_CBA = 0;
+    HAL_I2S_DeInit(&hi2s3);
+    hi2s3.Init.AudioFreq = I2S_AUDIOFREQ_48K;
+    HAL_I2S_Init(&hi2s3);
+}
 
 void EchoRelay(uint16_t *dataADC){
     if (EchoCounter < 5000) {
@@ -196,6 +210,7 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc) {
     data_adc[0] = data1[0];
 
     if(Effect_Echo == 1) EchoRelay(data_adc);
+
     if(Effect_Overdrive == 1) Overdrive(data_adc);
     //if(Effect_Childvoice == 1) Childvoice(data_adc);
     //if(Effect_CBA == 1) CriminalVoice(data_adc);
@@ -218,11 +233,10 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     if (htim->Instance == TIM2)
     {
         if (HAL_ADC_PollForConversion(&hadc2, 10) == HAL_OK) {
-            old_volume = volume;
             volume = HAL_ADC_GetValue(&hadc2);
-
-            if(volume>old_volume+25 || volume<old_volume+25)
-                CS43_SetVolume((int)(80* (volume/4095)));
+            volume = volume/4095;
+            if(volume < 0.009) volume = 0;
+            CS43_SetVolume(90*volume);
         }
         HAL_ADC_Start(&hadc2);
     }
@@ -230,17 +244,26 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     {
         if(HAL_GPIO_ReadPin(GPIOE,GPIO_PIN_3) == GPIO_PIN_RESET) {
             HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_12);
-            if(Effect_Echo == 0) Effect_Echo = 1;
+            if(Effect_Echo == 0) {
+                resetAudio();
+                Effect_Echo = 1;
+            }
             else Effect_Echo = 0;
         }
         if(HAL_GPIO_ReadPin(GPIOE,GPIO_PIN_4) == GPIO_PIN_RESET) {
             HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_13);
-            if(Effect_Overdrive == 0) Effect_Overdrive = 1;
+            if(Effect_Overdrive == 0) {
+                resetAudio();
+                Effect_Overdrive = 1;
+            }
             else Effect_Overdrive = 0;
         }
         if(HAL_GPIO_ReadPin(GPIOE,GPIO_PIN_5) == GPIO_PIN_RESET) {
             HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_14);
-            if(Effect_Childvoice == 0) Effect_Childvoice = 1;
+            if(Effect_Childvoice == 0) {
+                resetAudio();
+                Effect_Childvoice = 1;
+            }
             else Effect_Childvoice = 0;
 
             HAL_ADC_Stop_DMA(&hadc1);
@@ -251,6 +274,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
             HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_15);
 
             if(Effect_CBA == 0) {
+                resetAudio();
                 Effect_CBA = 1;
                 HAL_I2S_DeInit(&hi2s3);
                 hi2s3.Init.AudioFreq = I2S_AUDIOFREQ_22K;
@@ -296,7 +320,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
         		HAL_I2S_DeInit(&hi2s3);
         		hi2s3.Init.AudioFreq = I2S_AUDIOFREQ_44K;
         		HAL_StatusTypeDef result = HAL_I2S_Init(&hi2s3);
-        		fresult = f_open(&file, "laser.wav", 1);
+        		fresult = f_open(&file, "laserap.wav", 1);
         		f_lseek(&file, 44);
         		HAL_TIM_Base_Start_IT(&htim6);
         	}
@@ -431,7 +455,7 @@ int main(void)
 
   HAL_ADC_Start_IT(&hadc1);
   HAL_ADC_Start(&hadc2);
-  //HAL_TIM_Base_Start_IT(&htim2);
+  HAL_TIM_Base_Start_IT(&htim2);
 
   htim2.Instance->ARR = 139 ;
   htim2.Instance->PSC = 59999;
@@ -825,7 +849,7 @@ static void MX_TIM6_Init(void)
   htim6.Instance = TIM6;
   htim6.Init.Prescaler = 0;
   htim6.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim6.Init.Period = 1749;
+  htim6.Init.Period = 1679;
   htim6.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim6) != HAL_OK)
   {
