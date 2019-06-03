@@ -70,6 +70,7 @@
 
 /* Private variables ---------------------------------------------------------*/
 ADC_HandleTypeDef hadc1;
+ADC_HandleTypeDef hadc2;
 DMA_HandleTypeDef hdma_adc1;
 
 I2C_HandleTypeDef hi2c1;
@@ -92,9 +93,7 @@ uint32_t EchoData[15000];
 uint32_t ChildvoiceData[3000] = {0};
 double ChildvoiceDataFFTIn[3000] = {0};
 int ChildvoiceTmp = 0;
-uint32_t Speedy[1000] = {0};
-uint32_t data4[5000];
-uint32_t data5[5000];
+uint16_t Speedy[1000] = {0};
 uint16_t data_adc[1];
 int EchoCounter = 0;
 int ChildVoiceCounter = 0;
@@ -104,17 +103,18 @@ int Effect_Childvoice = 0;
 int Effect_CBA = 0;
 double FFT_Val = 0;
 double in[2000] = {0};
-
+double volume;
+double old_volume;
 uint16_t dataSAMPLE = 0;
 //End Defined for CS43L22 ----------------------------------------
 //SD CARD VARS
-uint8_t  SDbuffer[SDSIZE];      	//bufor odczytu i zapisu
+uint8_t SDbuffer[SDSIZE];      	//bufor odczytu i zapisu
 uint16_t tempbuff[SDSIZE];
 static FATFS FatFs;    				//uchwyt do urz¹dzenia FatFs (dysku, karty SD...)
 FRESULT fresult;       				//do przechowywania wyniku operacji na bibliotece FatFs
 FIL file;                  			//uchwyt do otwartego pliku
 WORD bytes_read;           			//liczba odczytanych byte
-volatile int i=44;
+volatile int startstop=0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -128,7 +128,22 @@ static void MX_TIM3_Init(void);
 static void MX_ADC1_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_TIM6_Init(void);
+static void MX_ADC2_Init(void);
 /* USER CODE BEGIN PFP */
+void resetAudio(){
+    HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, 0);
+    HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, 0);
+    HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, 0);
+    HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, 0);
+
+    Effect_Echo = 0;
+    Effect_Overdrive = 0;
+    Effect_Childvoice = 0;
+    Effect_CBA = 0;
+    HAL_I2S_DeInit(&hi2s3);
+    hi2s3.Init.AudioFreq = I2S_AUDIOFREQ_48K;
+    HAL_I2S_Init(&hi2s3);
+}
 
 void EchoRelay(uint16_t *dataADC){
     if (EchoCounter < 5000) {
@@ -195,6 +210,7 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc) {
     data_adc[0] = data1[0];
 
     if(Effect_Echo == 1) EchoRelay(data_adc);
+
     if(Effect_Overdrive == 1) Overdrive(data_adc);
     //if(Effect_Childvoice == 1) Childvoice(data_adc);
     //if(Effect_CBA == 1) CriminalVoice(data_adc);
@@ -216,23 +232,38 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
     if (htim->Instance == TIM2)
     {
-        
+        if (HAL_ADC_PollForConversion(&hadc2, 10) == HAL_OK) {
+            volume = HAL_ADC_GetValue(&hadc2);
+            volume = volume/4095;
+            if(volume < 0.009) volume = 0;
+            CS43_SetVolume(90*volume);
+        }
+        HAL_ADC_Start(&hadc2);
     }
     if (htim->Instance == TIM3)
     {
         if(HAL_GPIO_ReadPin(GPIOE,GPIO_PIN_3) == GPIO_PIN_RESET) {
             HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_12);
-            if(Effect_Echo == 0) Effect_Echo = 1;
+            if(Effect_Echo == 0) {
+                resetAudio();
+                Effect_Echo = 1;
+            }
             else Effect_Echo = 0;
         }
         if(HAL_GPIO_ReadPin(GPIOE,GPIO_PIN_4) == GPIO_PIN_RESET) {
             HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_13);
-            if(Effect_Overdrive == 0) Effect_Overdrive = 1;
+            if(Effect_Overdrive == 0) {
+                resetAudio();
+                Effect_Overdrive = 1;
+            }
             else Effect_Overdrive = 0;
         }
         if(HAL_GPIO_ReadPin(GPIOE,GPIO_PIN_5) == GPIO_PIN_RESET) {
             HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_14);
-            if(Effect_Childvoice == 0) Effect_Childvoice = 1;
+            if(Effect_Childvoice == 0) {
+                resetAudio();
+                Effect_Childvoice = 1;
+            }
             else Effect_Childvoice = 0;
 
             HAL_ADC_Stop_DMA(&hadc1);
@@ -243,6 +274,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
             HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_15);
 
             if(Effect_CBA == 0) {
+                resetAudio();
                 Effect_CBA = 1;
                 HAL_I2S_DeInit(&hi2s3);
                 hi2s3.Init.AudioFreq = I2S_AUDIOFREQ_22K;
@@ -259,42 +291,110 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
             HAL_ADC_Start_DMA(&hadc1, Speedy, 1000);
         }
         if(HAL_GPIO_ReadPin(GPIOE,GPIO_PIN_7) == GPIO_PIN_RESET) {
-        	HAL_ADC_Stop_DMA(&hadc1);
-        	HAL_I2S_DMAStop(&hi2s3);
-        	fresult = f_open(&file, "isengard.wav", 1);
-        	HAL_TIM_Base_Start_IT(&htim6);
+        	if(startstop==0){
+        		HAL_ADC_Stop_DMA(&hadc1);
+        		HAL_I2S_DMAStop(&hi2s3);
+        		HAL_I2S_DeInit(&hi2s3);
+        		hi2s3.Init.AudioFreq = I2S_AUDIOFREQ_16K;
+        		HAL_StatusTypeDef result = HAL_I2S_Init(&hi2s3);
+        		fresult = f_open(&file, "isengard.wav", 1);
+        		f_lseek(&file, 44);
+        		HAL_TIM_Base_Start_IT(&htim6);
+        	}
+        	else {
+        		HAL_TIM_Base_Stop_IT(&htim6);
+        		HAL_I2S_DeInit(&hi2s3);
+        		hi2s3.Init.AudioFreq = I2S_AUDIOFREQ_48K;
+        		HAL_StatusTypeDef result = HAL_I2S_Init(&hi2s3);
+        		fresult = f_close(&file);
+        		HAL_ADC_Start_IT(&hadc1);
+        		HAL_ADC_Start_DMA(&hadc1, data1, SAMPLE);
+        		startstop=0;
+        	}
+
         }
         if(HAL_GPIO_ReadPin(GPIOE,GPIO_PIN_8) == GPIO_PIN_RESET) {
-        	HAL_ADC_Stop_DMA(&hadc1);
-        	HAL_I2S_DMAStop(&hi2s3);
-        	fresult = f_open(&file, "laser.wav", 1);
-        	HAL_TIM_Base_Start_IT(&htim6);
+        	if(startstop==0){
+        		HAL_ADC_Stop_DMA(&hadc1);
+        		HAL_I2S_DMAStop(&hi2s3);
+        		HAL_I2S_DeInit(&hi2s3);
+        		hi2s3.Init.AudioFreq = I2S_AUDIOFREQ_16K;
+        		HAL_StatusTypeDef result = HAL_I2S_Init(&hi2s3);
+        		fresult = f_open(&file, "laserap.wav", 1);
+        		f_lseek(&file, 44);
+        		HAL_TIM_Base_Start_IT(&htim6);
+        	}
+        	else {
+        		HAL_TIM_Base_Stop_IT(&htim6);
+        		HAL_I2S_DeInit(&hi2s3);
+        		hi2s3.Init.AudioFreq = I2S_AUDIOFREQ_48K;
+        		HAL_StatusTypeDef result = HAL_I2S_Init(&hi2s3);
+        		fresult = f_close(&file);
+        		HAL_ADC_Start_IT(&hadc1);
+        		HAL_ADC_Start_DMA(&hadc1, data1, SAMPLE);
+        		startstop=0;
+        	}
         }
         if(HAL_GPIO_ReadPin(GPIOE,GPIO_PIN_9) == GPIO_PIN_RESET) {
-            HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_14);
-            HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_15);
+        	if(startstop==0){
+        		HAL_ADC_Stop_DMA(&hadc1);
+        		HAL_I2S_DMAStop(&hi2s3);
+        		HAL_I2S_DeInit(&hi2s3);
+        		hi2s3.Init.AudioFreq = I2S_AUDIOFREQ_16K;
+        		HAL_StatusTypeDef result = HAL_I2S_Init(&hi2s3);
+        		fresult = f_open(&file, "snoop.wav", 1);
+        		f_lseek(&file, 44);
+        		HAL_TIM_Base_Start_IT(&htim6);
+        	}
+        	else {
+        		HAL_TIM_Base_Stop_IT(&htim6);
+        		HAL_I2S_DeInit(&hi2s3);
+        		hi2s3.Init.AudioFreq = I2S_AUDIOFREQ_48K;
+        		HAL_StatusTypeDef result = HAL_I2S_Init(&hi2s3);
+        		fresult = f_close(&file);
+        		HAL_ADC_Start_IT(&hadc1);
+        		HAL_ADC_Start_DMA(&hadc1, data1, SAMPLE);
+        		startstop=0;
+        	}
         }
         if(HAL_GPIO_ReadPin(GPIOE,GPIO_PIN_10) == GPIO_PIN_RESET) {
-            HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_15);
-            HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_12);
+        	if(startstop==0){
+        		HAL_ADC_Stop_DMA(&hadc1);
+        		HAL_I2S_DMAStop(&hi2s3);
+        		HAL_I2S_DeInit(&hi2s3);
+        		hi2s3.Init.AudioFreq = I2S_AUDIOFREQ_16K;
+        		HAL_StatusTypeDef result = HAL_I2S_Init(&hi2s3);
+        		fresult = f_open(&file, "star.wav", 1);
+        		f_lseek(&file, 44);
+        		HAL_TIM_Base_Start_IT(&htim6);
+        	}
+        	else {
+        		HAL_TIM_Base_Stop_IT(&htim6);
+        		HAL_I2S_DeInit(&hi2s3);
+        		hi2s3.Init.AudioFreq = I2S_AUDIOFREQ_48K;
+        		HAL_StatusTypeDef result = HAL_I2S_Init(&hi2s3);
+        		fresult = f_close(&file);
+        		HAL_ADC_Start_IT(&hadc1);
+        		HAL_ADC_Start_DMA(&hadc1, data1, SAMPLE);
+        		startstop=0;
+        	}
         }
         HAL_TIM_Base_Stop_IT(&htim3);
     }
     if (htim->Instance == TIM6){
-
-    	f_lseek(&file, i);
+    	startstop=1;
     	fresult = f_read(&file, SDbuffer, SDSIZE, &bytes_read);
-    	tempbuff[0]=SDbuffer[0]*12;
-    	if(tempbuff[0]>1500) tempbuff[0]=1500;
-    	else if(tempbuff[0]<400) tempbuff[0]=400;
-    	HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t *)tempbuff, 1);
-    	i++;
+    	tempbuff[0]=SDbuffer[0]*128;
+    	HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t *)tempbuff, SDSIZE);
     	if(f_eof(&file)){
     		HAL_TIM_Base_Stop_IT(&htim6);
+    		HAL_I2S_DeInit(&hi2s3);
+    		hi2s3.Init.AudioFreq = I2S_AUDIOFREQ_48K;
+    		HAL_StatusTypeDef result = HAL_I2S_Init(&hi2s3);
     		fresult = f_close(&file);
     		HAL_ADC_Start_IT(&hadc1);
     		HAL_ADC_Start_DMA(&hadc1, data1, SAMPLE);
-    		i=44;
+    		startstop=0;
     	}
     }
 }
@@ -346,18 +446,24 @@ int main(void)
   MX_ADC1_Init();
   MX_SPI1_Init();
   MX_TIM6_Init();
+  MX_ADC2_Init();
   /* USER CODE BEGIN 2 */
   CS43_Init(hi2c1, MODE_I2S); //MODE_ANALOG
-  CS43_SetVolume(70); //0 - 100,, 40 - MAX bo inaczej zjada za duzo pradu
+  CS43_SetVolume(80); //0 - 100,, 40 - MAX bo inaczej zjada za duzo pradu
   CS43_Enable_RightLeft(CS43_RIGHT_LEFT);
   CS43_Start();
 
   HAL_ADC_Start_IT(&hadc1);
+  HAL_ADC_Start(&hadc2);
+  HAL_TIM_Base_Start_IT(&htim2);
 
+  htim2.Instance->ARR = 139 ;
+  htim2.Instance->PSC = 59999;
 //  HAL_I2S_DeInit(&hi2s3);
 //  hi2s3.Init.AudioFreq = I2S_AUDIOFREQ_48K;
-//  hi2s3.Init.DataFormat = I2S_DATAFORMAT_16B;
 //  HAL_StatusTypeDef result = HAL_I2S_Init(&hi2s3);
+
+  HAL_ADC_Start_IT(&hadc1);
 
   //ADC to DMA
   HAL_ADC_Start_DMA(&hadc1, data1, SAMPLE);
@@ -474,6 +580,56 @@ static void MX_ADC1_Init(void)
   /* USER CODE BEGIN ADC1_Init 2 */
 
   /* USER CODE END ADC1_Init 2 */
+
+}
+
+/**
+  * @brief ADC2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_ADC2_Init(void)
+{
+
+  /* USER CODE BEGIN ADC2_Init 0 */
+
+  /* USER CODE END ADC2_Init 0 */
+
+  ADC_ChannelConfTypeDef sConfig = {0};
+
+  /* USER CODE BEGIN ADC2_Init 1 */
+
+  /* USER CODE END ADC2_Init 1 */
+  /** Configure the global features of the ADC (Clock, Resolution, Data Alignment and number of conversion) 
+  */
+  hadc2.Instance = ADC2;
+  hadc2.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV8;
+  hadc2.Init.Resolution = ADC_RESOLUTION_12B;
+  hadc2.Init.ScanConvMode = DISABLE;
+  hadc2.Init.ContinuousConvMode = ENABLE;
+  hadc2.Init.DiscontinuousConvMode = DISABLE;
+  hadc2.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
+  hadc2.Init.ExternalTrigConv = ADC_SOFTWARE_START;
+  hadc2.Init.DataAlign = ADC_DATAALIGN_RIGHT;
+  hadc2.Init.NbrOfConversion = 1;
+  hadc2.Init.DMAContinuousRequests = DISABLE;
+  hadc2.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
+  if (HAL_ADC_Init(&hadc2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /** Configure for the selected ADC regular channel its corresponding rank in the sequencer and its sample time. 
+  */
+  sConfig.Channel = ADC_CHANNEL_9;
+  sConfig.Rank = 1;
+  sConfig.SamplingTime = ADC_SAMPLETIME_112CYCLES;
+  if (HAL_ADC_ConfigChannel(&hadc2, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN ADC2_Init 2 */
+
+  /* USER CODE END ADC2_Init 2 */
 
 }
 
@@ -602,9 +758,9 @@ static void MX_TIM2_Init(void)
 
   /* USER CODE END TIM2_Init 1 */
   htim2.Instance = TIM2;
-  htim2.Init.Prescaler = 0;
+  htim2.Init.Prescaler = 139;
   htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim2.Init.Period = 5249;
+  htim2.Init.Period = 59999;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
@@ -693,7 +849,7 @@ static void MX_TIM6_Init(void)
   htim6.Instance = TIM6;
   htim6.Init.Prescaler = 0;
   htim6.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim6.Init.Period = 1749;
+  htim6.Init.Period = 5109;
   htim6.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim6) != HAL_OK)
   {
@@ -743,9 +899,9 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOE_CLK_ENABLE();
   __HAL_RCC_GPIOH_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
   __HAL_RCC_GPIOC_CLK_ENABLE();
-  __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12|GPIO_PIN_13|GPIO_PIN_14|GPIO_PIN_15 
