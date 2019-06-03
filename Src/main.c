@@ -295,7 +295,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
         		HAL_ADC_Stop_DMA(&hadc1);
         		HAL_I2S_DMAStop(&hi2s3);
         		HAL_I2S_DeInit(&hi2s3);
-        		hi2s3.Init.AudioFreq = I2S_AUDIOFREQ_44K;
+        		hi2s3.Init.AudioFreq = I2S_AUDIOFREQ_16K;
         		HAL_StatusTypeDef result = HAL_I2S_Init(&hi2s3);
         		fresult = f_open(&file, "isengard.wav", 1);
         		f_lseek(&file, 44);
@@ -318,7 +318,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
         		HAL_ADC_Stop_DMA(&hadc1);
         		HAL_I2S_DMAStop(&hi2s3);
         		HAL_I2S_DeInit(&hi2s3);
-        		hi2s3.Init.AudioFreq = I2S_AUDIOFREQ_44K;
+        		hi2s3.Init.AudioFreq = I2S_AUDIOFREQ_16K;
         		HAL_StatusTypeDef result = HAL_I2S_Init(&hi2s3);
         		fresult = f_open(&file, "laserap.wav", 1);
         		f_lseek(&file, 44);
@@ -340,7 +340,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
         		HAL_ADC_Stop_DMA(&hadc1);
         		HAL_I2S_DMAStop(&hi2s3);
         		HAL_I2S_DeInit(&hi2s3);
-        		hi2s3.Init.AudioFreq = I2S_AUDIOFREQ_44K;
+        		hi2s3.Init.AudioFreq = I2S_AUDIOFREQ_16K;
         		HAL_StatusTypeDef result = HAL_I2S_Init(&hi2s3);
         		fresult = f_open(&file, "snoop.wav", 1);
         		f_lseek(&file, 44);
@@ -362,7 +362,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
         		HAL_ADC_Stop_DMA(&hadc1);
         		HAL_I2S_DMAStop(&hi2s3);
         		HAL_I2S_DeInit(&hi2s3);
-        		hi2s3.Init.AudioFreq = I2S_AUDIOFREQ_44K;
+        		hi2s3.Init.AudioFreq = I2S_AUDIOFREQ_16K;
         		HAL_StatusTypeDef result = HAL_I2S_Init(&hi2s3);
         		fresult = f_open(&file, "star.wav", 1);
         		f_lseek(&file, 44);
@@ -384,7 +384,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     if (htim->Instance == TIM6){
     	startstop=1;
     	fresult = f_read(&file, SDbuffer, SDSIZE, &bytes_read);
-    	tempbuff[0]=SDbuffer[0]*18;
+    	tempbuff[0]=SDbuffer[0]*128;
     	HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t *)tempbuff, SDSIZE);
     	if(f_eof(&file)){
     		HAL_TIM_Base_Stop_IT(&htim6);
@@ -849,7 +849,7 @@ static void MX_TIM6_Init(void)
   htim6.Instance = TIM6;
   htim6.Init.Prescaler = 0;
   htim6.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim6.Init.Period = 1679;
+  htim6.Init.Period = 5109;
   htim6.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim6) != HAL_OK)
   {
