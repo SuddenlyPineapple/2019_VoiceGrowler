@@ -108,12 +108,12 @@ double old_volume;
 uint16_t dataSAMPLE = 0;
 //End Defined for CS43L22 ----------------------------------------
 //SD CARD VARS
-uint8_t SDbuffer[SDSIZE];      	//bufor odczytu i zapisu
+uint8_t SDbuffer[SDSIZE];//bufor odczytu i zapisu
 uint16_t tempbuff[SDSIZE];
-static FATFS FatFs;    				//uchwyt do urz�dzenia FatFs (dysku, karty SD...)
-FRESULT fresult;       				//do przechowywania wyniku operacji na bibliotece FatFs
-FIL file;                  			//uchwyt do otwartego pliku
-WORD bytes_read;           			//liczba odczytanych byte
+static FATFS FatFs;//uchwyt do urz�dzenia FatFs (dysku, karty SD...)
+FRESULT fresult;//do przechowywania wyniku operacji na bibliotece FatFs
+FIL file;//uchwyt do otwartego pliku
+WORD bytes_read;//liczba odczytanych byte
 volatile int startstop=0;
 /* USER CODE END PV */
 
@@ -188,6 +188,7 @@ void Childvoice(uint16_t *dataADC){
     if(ChildVoiceCounter >= 3000) ChildVoiceCounter = 0;
 }
 
+// FFT Future Effect Function
 void CriminalVoice(uint16_t *dataADC){
 //    if(ChildvoiceTmp == 0) ChildvoiceData[0] = dataADC[0];
 //
@@ -208,16 +209,12 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc) {
 
     HAL_ADC_Stop_DMA(&hadc1);
     data_adc[0] = data1[0];
-
     if(Effect_Echo == 1) EchoRelay(data_adc);
-
     if(Effect_Overdrive == 1) Overdrive(data_adc);
-    //if(Effect_Childvoice == 1) Childvoice(data_adc);
-    //if(Effect_CBA == 1) CriminalVoice(data_adc);
 
 
     dataSAMPLE = data_adc[0];
-    //data_adc[0] *=3; // Regulacja głośności - powinnismy zrobic zakres -3 do +3/4, gdzie jak zglasniamy to jest np. *3, a jak zciszamy /3 i to wszystko na jakimś potencjometrze
+    //data_adc[0] *=3; // Volume Regulation for Echo and Overdrive
 
     if(Effect_Childvoice == 1 || Effect_CBA == 1){
         HAL_I2S_Transmit_DMA(&hi2s3, Speedy, 1000);
@@ -452,17 +449,11 @@ int main(void)
   CS43_SetVolume(80); //0 - 100,, 40 - MAX bo inaczej zjada za duzo pradu
   CS43_Enable_RightLeft(CS43_RIGHT_LEFT);
   CS43_Start();
-
   HAL_ADC_Start_IT(&hadc1);
   HAL_ADC_Start(&hadc2);
   HAL_TIM_Base_Start_IT(&htim2);
-
   htim2.Instance->ARR = 139 ;
   htim2.Instance->PSC = 59999;
-//  HAL_I2S_DeInit(&hi2s3);
-//  hi2s3.Init.AudioFreq = I2S_AUDIOFREQ_48K;
-//  HAL_StatusTypeDef result = HAL_I2S_Init(&hi2s3);
-
   HAL_ADC_Start_IT(&hadc1);
 
   //ADC to DMA
