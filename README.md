@@ -27,14 +27,14 @@ In case you would like to use your own files convert them into .wav having:
 ### Converter website
 https://audio.online-convert.com/convert-to-wav
 
-### Used Tools
+## Used Tools
 CubeMX
 STM32Studio
 Ecllipse
 
-### Future Improvements
+## Future Improvements
 Volume meter based on WS2812 Diodes 
 
-### Credits
+## Credits
 Wojciech Kasperski\
 Michał Kalinowski
